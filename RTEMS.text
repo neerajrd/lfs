@@ -1,0 +1,68 @@
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+How to build RTEMS:
+
+# Go to working directory
+cd /data/ML03/RTEMS
+
+# Clone RTEMS Source Builder
+git clone https://github.com/RTEMS/rtems-source-builder.git
+cd rtems-source-builder
+
+# Go to rtems directory
+cd rtems
+
+# Build ARM RTEMS toolchain
+../source-builder/sb-set-builder --jobs=2 --trace --prefix=/data/ML03/RTEMS/toolchain 7/rtems-arm
+
+# Add toolchain to PATH
+export PATH=/data/ML03/RTEMS/toolchain/bin:$PATH
+
+# Go back to working directory
+cd /data/ML03/RTEMS
+
+# Clone RTEMS kernel
+git clone https://gitlab.rtems.org/rtems/rtos/rtems.git
+cd rtems
+
+# Configure for STM32H753ZI Nucleo BSP
+./waf bspdefaults --rtems-bsps=arm/nucleo-h753zi > config.ini
+
+# Build RTEMS kernel
+./waf configure --rtems-config=config.ini --prefix=/data/ML03/RTEMS/main
+./waf -j2
+./waf -j2 install
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+How to test:
+
+cd build/arm/nucleo-h753zi/testsuites/samples/
+
+$ ls *.exe
+base_sp.exe  hello.exe  ...
+
+There are many sample executables here. To try hello.exe:
+
+arm-rtems7-objcopy -O binary hello.exe hello.bin
+
+Flash hello.bin using STM32CubeProg
+
+Note: Install STM32CubeProg for Linux.
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+Following is the sample path:
+
+cd ./testsuites/samples/hello/
+
+$ ls
+hello.doc  hello.scn  init.c
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+
+
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
