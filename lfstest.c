@@ -10,36 +10,14 @@
 
 #include "lfs.h"
 
-#define NO_OF_FILES 4
-
-#define COUNTER_DIR "/counter"
-
-// Global variables for file name and size
-char g_filenames[NO_OF_FILES][256] = {"1MB.bin", "2MB.bin", "3MB.bin", "4MB.bin"};
-size_t g_filesizes[NO_OF_FILES] = {1 * 1024 * 1024, 2 * 1024 * 1024, 3 * 1024 * 1024, 4 * 1024 * 1024}; // Sizes in bytes
-int g_fileopen[NO_OF_FILES];
-
-int g_file_index = 0; // Default index
-
 #define QSPI_SECTOR_SIZE (256 * 1024) // 256 KB
 #define QSPI_PAGE_SIZE 4096
 #define QSPI_SECTORS  (256 * 1024 * 1024 / QSPI_SECTOR_SIZE) // Calculated block count
 
-uint8_t g_bad_blocks[QSPI_SECTORS];
-
-// Disk file descriptor
 int disk_fd;
-
-// Global variable for file operations
-lfs_file_t g_files[NO_OF_FILES];
 
 int disk_read(const struct lfs_config *c, lfs_block_t block,
               lfs_off_t off, void *buffer, lfs_size_t size) {
-
-    if (g_bad_blocks[block]) {
-        printf("Bad block access (read) %d\n", block);
-        return LFS_ERR_CORRUPT;
-    }
 
     lseek(disk_fd, block * c->block_size + off, SEEK_SET);
     read(disk_fd, buffer, size);
@@ -49,23 +27,12 @@ int disk_read(const struct lfs_config *c, lfs_block_t block,
 int disk_prog(const struct lfs_config *c, lfs_block_t block,
               lfs_off_t off, const void *buffer, lfs_size_t size) {
     
-    if (g_bad_blocks[block]) {
-        printf("Bad block access (prog) %d\n", block);
-        return LFS_ERR_CORRUPT;
-    }
-
-    printf(">>> %d %d %d\n", block, off, size);
     lseek(disk_fd, block * c->block_size + off, SEEK_SET);
     write(disk_fd, buffer, size);
     return 0;
 }
 
 int disk_erase(const struct lfs_config *c, lfs_block_t block) {
-
-    if (g_bad_blocks[block]) {
-        printf("Bad block access (erase) %d\n", block);
-        return LFS_ERR_CORRUPT;
-    }
 
     uint8_t data[QSPI_SECTOR_SIZE];
     memset(data, 0xFF, QSPI_SECTOR_SIZE); // Ensure the block is filled with 0xFF
@@ -106,35 +73,16 @@ struct lfs_config cfg = {
 void print_menu() {
     printf("\nMenu:\n");
     printf("q. Exit\n");
-
     printf("m. Mount filesystem\n");
     printf("u. Unmount filesystem\n");
     printf("f. Format filesystem\n");
-
     printf("w. Write to file\n");
     printf("r. Read from file\n");
-    printf("l. List files\n");
-    printf("d. Delete file\n");
-    printf("s. Set file index (0-%d)\n", NO_OF_FILES - 1);
-
-    printf("e. Erase block\n");
-    printf("b. Mark block as bad\n");    
-    printf("c. Corrupt block\n");
-
-    printf("1..9. Tests\n");
-}
-
-volatile int g_loop_cont = 0;
-
-void handler(int sig) {
-    g_loop_cont = 0;
 }
 
 int main() {
 
     lfs_t lfs;
-
-    signal(SIGQUIT, handler);   // Ctrl+\
 
     // Open the block device
     disk_fd = open("/dev/sda", O_RDWR);
@@ -197,63 +145,39 @@ int main() {
             }
 
             case 'w': {
-                // Check if file handle is open
-                if (g_fileopen[g_file_index]) {
-                    printf("Closing the file first %s\n", g_filenames[g_file_index]);
-                    lfs_file_close(&lfs, &g_files[g_file_index]);
-                    g_fileopen[g_file_index] = 0;
-                }
+                lfs_file_t file;
+                const char *filename = "test.txt";
+                const char *data = "Hello LittleFS\n";
 
-                // Write to file
-                int res = lfs_file_open(&lfs, &g_files[g_file_index], g_filenames[g_file_index], LFS_O_RDWR | LFS_O_CREAT);
+                int res = lfs_file_open(&lfs, &file, filename, LFS_O_RDWR | LFS_O_CREAT);
                 if (res < 0) {
-                    printf("Error opening file %s for writing: %d\n", g_filenames[g_file_index], res);
+                    printf("Error opening file %s for writing: %d\n", filename, res);
                     break;
                 }
-                g_fileopen[g_file_index] = 1;
 
-                uint32_t value = 0;
-                for (size_t i = 0; i < g_filesizes[g_file_index] / sizeof(uint32_t); i++) {
-                    lfs_file_write(&lfs, &g_files[g_file_index], &value, sizeof(uint32_t));
-                    value++;
-                }
+                lfs_file_write(&lfs, &file, data, strlen(data));
 
-                lfs_file_close(&lfs, &g_files[g_file_index]);
-                g_fileopen[g_file_index] = 0;
-                printf("Data written to %s\n", g_filenames[g_file_index]);
+                lfs_file_close(&lfs, &file);
+                printf("Written to %s\n", filename);
                 break;
             }
 
             case 'r': {
-                // Check if file handle is open
-                if (g_fileopen[g_file_index]) {
-                    printf("Closing the file first %s\n", g_filenames[g_file_index]);
-                    lfs_file_close(&lfs, &g_files[g_file_index]);
-                    g_fileopen[g_file_index] = 0;
-                }
+                lfs_file_t file;
+                const char *filename = "test.txt";
+                char buffer[128] = {0};
 
-                // Read from file
-                int res = lfs_file_open(&lfs, &g_files[g_file_index], g_filenames[g_file_index], LFS_O_RDONLY);
+                int res = lfs_file_open(&lfs, &file, filename, LFS_O_RDONLY);
                 if (res < 0) {
-                    printf("Error opening file %s for reading: %d\n", g_filenames[g_file_index], res);
+                    printf("Error opening file %s for reading: %d\n", filename, res);
                     break;
                 }
-                g_fileopen[g_file_index] = 1;
 
-                uint32_t value = 0;
-                uint32_t read_value;
-                for (size_t i = 0; i < g_filesizes[g_file_index] / sizeof(uint32_t); i++) {
-                    ssize_t bytes_read = lfs_file_read(&lfs, &g_files[g_file_index], &read_value, sizeof(uint32_t));
-                    if (bytes_read < 0 || bytes_read != sizeof(uint32_t) || read_value != value) {
-                        printf("\r\nError or data verification failed at index %zu\n", i);
-                        break;
-                    }
-                    value++;
-                }
+                lfs_file_read(&lfs, &file, buffer, sizeof(buffer) - 1);
 
-                lfs_file_close(&lfs, &g_files[g_file_index]);
-                g_fileopen[g_file_index] = 0;
-                printf("Data verification successful for %s\n", g_filenames[g_file_index]);
+                lfs_file_close(&lfs, &file);
+
+                printf("Read from %s:\n%s\n", filename, buffer);
                 break;
             }
 
@@ -279,232 +203,14 @@ int main() {
             }
 
             case 'd': {
+                const char *filename = "test.txt";
                 // Delete file
-                int res = lfs_remove(&lfs, g_filenames[g_file_index]);
+                int res = lfs_remove(&lfs, filename);
                 if (res < 0) {
-                    printf("Error deleting file %s: %d\n", g_filenames[g_file_index], res);
+                    printf("Error deleting file %s: %d\n", filename, res);
                 } else {
-                    printf("File %s deleted successfully\n", g_filenames[g_file_index]);
+                    printf("File %s deleted successfully\n", filename);
                 }
-                break;
-            }
-
-            case 's': {
-                // Set file index
-                printf("Enter file index (0-%d): ", NO_OF_FILES - 1);
-                int index;
-                if (scanf("%d", &index) == 1 && index >= 0 && index < NO_OF_FILES) {
-                    g_file_index = index;
-                    printf("Selected file: %s, Size: %zu bytes\n", g_filenames[g_file_index], g_filesizes[g_file_index]);
-                } else {
-                    printf("Invalid file index.\n");
-                }
-                break;
-            }
-
-            case 'e': {
-                // Erase block
-                printf("Enter the block number to erase: ");
-                uint32_t block_num;
-                if (scanf("%u", &block_num) == 1) {
-                    int res = disk_erase(&cfg, block_num);
-                    if (res == 0) {
-                        printf("Block %u erased successfully\n", block_num);
-                    } else {
-                        printf("Error erasing block %u: %d\n", block_num, res);
-                    }
-                } else {
-                    printf("Invalid block number.\n");
-                }
-                break;
-            }
-
-            case 'b': {
-                printf("Enter block number to mark as bad: ");
-
-                uint32_t block;
-                if (scanf("%u", &block) == 1 && block < QSPI_SECTORS) {
-                    g_bad_blocks[block] = 1;
-                    printf("Block %u marked as BAD\n", block);
-                } else {
-                    printf("Invalid block number\n");
-                }
-
-                break;
-            }
-
-            case 'c': {
-                // Corrupt block
-
-                printf("Enter block number to corrupt: ");
-
-                uint32_t block;
-                if (scanf("%u", &block) != 1 || block >= QSPI_SECTORS) {
-                    printf("Invalid block number\n");
-                    break;
-                }
-
-                uint8_t data[256];
-
-                for (size_t i = 0; i < sizeof(data); i++) {
-                    data[i] = rand() & 0xFF;
-                }
-
-                lseek(disk_fd, block * QSPI_SECTOR_SIZE, SEEK_SET);
-
-                ssize_t written = write(disk_fd, data, sizeof(data));
-                if (written != sizeof(data)) {
-                    perror("Error corrupting block");
-                } else {
-                    printf("Block %u corrupted at beginning\n", block);
-                }
-
-                break;
-            }
-
-
-            case '1': {
-                uint32_t value = 0;
-                lfs_file_t file;
-                char filename[64];
-
-                uint8_t dummy[1019];
-                memset(dummy, 0xAA, sizeof(dummy));
-
-                // Make sub-directory
-
-#ifdef          COUNTER_DIR
-
-                lfs_mkdir(&lfs, COUNTER_DIR);
-#endif
-                // Read existing value if file exists
-
-#ifdef          COUNTER_DIR
-
-                snprintf(filename, sizeof(filename), COUNTER_DIR "/counter00.bin");
-#else
-                snprintf(filename, sizeof(filename), "counter00.bin");
-#endif
-                int res = lfs_file_open(&lfs, &file, filename, LFS_O_RDONLY);
-                if (res >= 0) {
-                    uint32_t existing;
-                    ssize_t bytes = lfs_file_read(&lfs, &file, &existing, sizeof(existing));
-                    if (bytes == sizeof(existing)) {
-                        value = existing + 1;
-                    } else {
-                        printf("Error reading existing counter from %s\n", filename);
-                    }
-                    lfs_file_close(&lfs, &file);
-                }
-
-                g_loop_cont = 1;
-                while (g_loop_cont) {
-                    for (int i = 0; i < 1; i++) {
-
-#ifdef                  COUNTER_DIR
-
-                        snprintf(filename, sizeof(filename), COUNTER_DIR "/counter%02d.bin", i);
-#else
-                        snprintf(filename, sizeof(filename), "counter%02d.bin", i);
-#endif
-                        int res = lfs_file_open(&lfs, &file, filename, LFS_O_RDWR | LFS_O_CREAT);
-                        if (res < 0) {
-                            printf("Error opening file %s: %d\n", filename, res);
-                            continue;
-                        }
-
-                        int written = lfs_file_write(&lfs, &file, &value, sizeof(value));
-                        if (written < 0) {
-                            printf("Error writing to file %s: %d\n", filename, written);
-                            lfs_file_close(&lfs, &file);
-                            continue;
-                        }
-
-                        written = lfs_file_write(&lfs, &file, dummy, sizeof(dummy));
-                        if (written < 0) {
-                            printf("Error writing dummy bytes to file %s: %d\n", filename, written);
-                            lfs_file_close(&lfs, &file);
-                            continue;
-                        }
-
-                        lfs_file_close(&lfs, &file);
-
-                        printf("Written value %u to %s\n", value, filename);
-                    }
-
-                    value++;
-
-                    usleep(500 * 1000);
-                }
-
-                break;
-            }
-
-            case '2': {
-                uint32_t value;
-                lfs_file_t file;
-                char filename[64];
-
-#ifdef          COUNTER_DIR
-
-                snprintf(filename, sizeof(filename), COUNTER_DIR "/counter00.bin");
-#else
-                snprintf(filename, sizeof(filename), "counter00.bin");
-#endif
-                int res = lfs_file_open(&lfs, &file, filename, LFS_O_RDONLY);
-
-                if (res < 0) {
-                    printf("Error opening file /counter/counter01.bin: %d\n", res);
-                    break;
-                }
-
-                ssize_t bytes = lfs_file_read(&lfs, &file, &value, sizeof(value));
-                if (bytes == sizeof(value)) {
-                    printf("Counter value: %u\n", value);
-                } else {
-                    printf("Error reading counter\n");
-                }
-
-                lfs_file_close(&lfs, &file);
-
-                break;
-            }
-
-            case '3': {
-
-#ifdef          LITTLEFS_VER_2_11_2
-
-                // Make filesystem consistent
-
-                int res = lfs_fs_mkconsistent(&lfs);
-
-                if (res < 0) {
-                    printf("Error making filesystem consistent: %d\n", res);
-                } else {
-                    printf("Filesystem made consistent\n");
-                }
-#endif
-                break;
-            }            
-
-            case '4': {
-                // Trigger LFS assert by closing file twice
-
-                lfs_file_t file;
-                const char *filename = "assert_test.bin";
-
-                int res = lfs_file_open(&lfs, &file, filename, LFS_O_RDWR | LFS_O_CREAT);
-                if (res < 0) {
-                    printf("Error opening file %s: %d\n", filename, res);
-                    break;
-                }
-
-                printf("Closing file first time\n");
-                lfs_file_close(&lfs, &file);
-
-                printf("Closing file second time\n");
-                lfs_file_close(&lfs, &file);
-
                 break;
             }
 
