@@ -1,18 +1,13 @@
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <linux/fs.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #include "lfs.h"
 
 #define QSPI_SECTOR_SIZE (256 * 1024) // 256 KB
 #define QSPI_PAGE_SIZE 4096
-#define QSPI_SECTORS  (256 * 1024 * 1024 / QSPI_SECTOR_SIZE) // Calculated block count
+#define QSPI_SECTORS  (256 * 1024 * 1024 / QSPI_SECTOR_SIZE)
 
 int disk_fd;
 
@@ -43,7 +38,6 @@ int disk_erase(const struct lfs_config *c, lfs_block_t block) {
         perror("Error writing to disk during erase");
         return -1;
     }
-
     return 0;
 }
 
@@ -145,6 +139,7 @@ int main() {
             }
 
             case 'w': {
+                // Write to file
                 lfs_file_t file;
                 const char *filename = "test.txt";
                 const char *data = "Hello LittleFS\n";
@@ -163,6 +158,7 @@ int main() {
             }
 
             case 'r': {
+                // Read from file
                 lfs_file_t file;
                 const char *filename = "test.txt";
                 char buffer[128] = {0};
@@ -172,9 +168,7 @@ int main() {
                     printf("Error opening file %s for reading: %d\n", filename, res);
                     break;
                 }
-
                 lfs_file_read(&lfs, &file, buffer, sizeof(buffer) - 1);
-
                 lfs_file_close(&lfs, &file);
 
                 printf("Read from %s:\n%s\n", filename, buffer);
